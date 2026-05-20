@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>NeuroBridge — BCI Platform</title>
+<title>NeuroBridge — Brain–Computer Interface Platform</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -15,10 +15,10 @@
 
 <canvas id="neuro-canvas"></canvas>
 
-<!-- NAV -->
 <nav>
-  <div class="nav-logo"> NeuroBridge</div>
+  <div class="nav-logo">🧠 NeuroBridge</div>
   <div class="nav-links">
+    <a href="#hero">Home</a>
     <a href="#interface">Interface</a>
     <a href="#engine">Engine</a>
     <a href="#medical">Medical</a>
@@ -26,16 +26,35 @@
   </div>
 </nav>
 
-<!-- HERO -->
 <section id="hero">
-  <h1>NeuroBridge</h1>
-  <p>Brain–Computer Interface for Assistive Communication</p>
+  <div class="hero-content">
+    <h1>NeuroBridge</h1>
+    <p>Brain–Computer Interface for Assistive Communication</p>
 
-  <button onclick="triggerSignal('YES','✓','yes')">Launch Demo</button>
+    <div class="hero-ctas">
+      <button onclick="triggerSignal('YES','✓','yes')">YES</button>
+      <button onclick="triggerSignal('NO','✗','no')">NO</button>
+      <button onclick="triggerSignal('HELP','⚡','help')">HELP</button>
+    </div>
+  </div>
 </section>
 
-<!-- MAIN SECTIONS (you can paste your full sections here unchanged) -->
+<section id="interface">
+  <h2>Live Interface</h2>
+
+  <div id="output-result">Awaiting signal...</div>
+  <div id="output-sub">Click a button to simulate EEG decoding</div>
+
+  <div id="output-history"></div>
+</section>
+
+<section id="medical">
+  <h2>Medical Explorer</h2>
+  <input id="search" oninput="filterDiseases(this.value)" placeholder="Search diseases..."/>
+  <div id="disease-grid"></div>
+</section>
 
 <script src="js/app.js"></script>
+
 </body>
 </html>
