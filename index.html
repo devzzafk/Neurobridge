@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SILENT SPEECH · TinyML Assistive Interface</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500&display=swap');
+
+  :root {
+    --bg-deep:   #0d0d11;
+    --bg-mid:    #13131a;
+    --bg-panel:  #181820;
+    --bg-card:   #1e1e28;
+    --bg-card2:  #232330;
+    --cyan:      #00f5d4;
+    --cyan-dim:  #00614f;
+    --cyan-glow: rgba(0,245,212,0.18);
+    --white:     #f0f0f8;
+    --grey-lt:   #9090aa;
+    --grey-mid:  #484860;
+    --red:       #ff4560;
+    --amber:     #ffb020;
+    --green:     #00e396;
+    --border:    rgba(0,245,212,0.12);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--white);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.06) 2px,
+      rgba(0,0,0,0.06) 4px
+    );
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  /* ── BOOT OVERLAY ── */
+  #boot-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg-deep);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  #boot-overlay.fade-out {
+    opacity: 0;
+    transform: scale(1.04);
+    pointer-events: none;
+  }
+  .boot-hex {
+    font-family: 'Orbitron', monospace;
+    font-size: 64px;
+    color: var(--cyan);
+    animation: pulse-hex 1.4s ease-in-out infinite;
+    text-shadow: 0 0 40px var(--cyan);
+  }
+  @keyframes pulse-hex {
+    0%,100%{ opacity:1; transform:scale(1); }
+    50%{ opacity:0.6; transform:scale(0.94); }
+  }
+  .boot-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: var(--white);
+  }
+  .boot-sub {
+    font-size: 11px;
+    color: var(--grey-lt);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  .boot-bar-wrap {
+    width: 360px;
+    height: 3px;
+    background: var(--bg-card2);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 12px;
+  }
+  .boot-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--cyan-dim), var(--cyan));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 12px var(--cyan);
+  }
+  .boot-msg {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--cyan);
+    min-height: 16px;
+    letter-spacing: 1px;
+  }
+
+  /* ── LAYOUT ── */
+  #app { display: flex; flex-direction: column; height: 100vh; padding: 8px; gap: 6px; }
+
+  /* ── HEADER ── */
+  #header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 4px 6px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .hdr-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 3px;
+  }
+  .hdr-sep { width: 1px; height: 16px; background: var(--grey-mid); }
+  .hdr-sub { font-size: 10px; color: var(--grey-lt); letter-spacing: 1px; }
+  .hdr-clock {
+    margin-left: auto;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--grey-lt);
+    letter-spacing: 2px;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 4px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--grey-lt);
+    text-transform: uppercase;
+  }
+  .section-bar {
+    width: 3px;
+    height: 12px;
+    background: var(--cyan);
+    border-radius: 1px;
+    box-shadow: 0 0 6px var(--cyan);
+  }
+
+  /* ── TOP PANEL ── */
+  #top-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    padding: 4px 8px 8px;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .card-micro {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--grey-mid);
+    text-transform: uppercase;
+  }
+  .card-big {
+    font-family: 'Orbitron', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--cyan);
+    line-height: 1;
+    text-shadow: 0 0 20px var(--cyan-dim);
+  }
+  .card-val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--white);
+  }
+  .card-sub { font-size: 9px; color: var(--grey-lt); }
+  .conn-row { display: flex; align-items: center; gap: 6px; }
+  .conn-dot {
+    font-size: 20px;
+    color: var(--grey-mid);
+    transition: color 0.4s, text-shadow 0.4s;
+  }
+  .conn-dot.online { color: var(--green); text-shadow: 0 0 12px var(--green); }
+  .conn-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--grey-lt);
+  }
+  .stat-line {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--grey-lt);
+    line-height: 1.7;
+  }
+  .stat-line span { color: var(--white); }
+  .stat-line.cyan span { color: var(--cyan); }
+  .stat-line.red span   { color: var(--red); }
+  .stat-line.amber span { color: var(--amber); }
+
+  /* ── CENTER PANEL ── */
+  #center-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .signal-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 4px 10px 8px;
+    min-height: 0;
+  }
+  .channel-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .channel-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 2px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .ch1-lbl { color: var(--cyan); }
+  .ch2-lbl { color: var(--amber); }
+  .ch-meta { font-size: 8px; color: var(--grey-mid); }
+  canvas.sig-canvas {
+    width: 100%;
+    flex: 1;
+    display: block;
+    border-radius: 3px;
+    background: var(--bg-deep);
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .channel-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  /* ── BOTTOM PANEL ── */
+  #bottom-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .intent-content {
+    display: grid;
+    grid-template-columns: 1fr 140px 160px;
+    gap: 6px;
+    padding: 4px 8px 8px;
+  }
+  /* Intent bar */
+  .intent-bar {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow: hidden;
+    transition: background 0.25s, border-color 0.25s, box-shadow 0.25s;
+    min-height: 72px;
+  }
+  .intent-bar.flash-cyan {
+    background: rgba(0,245,212,0.12);
+    border-color: var(--cyan);
+    box-shadow: 0 0 24px rgba(0,245,212,0.3), inset 0 0 40px rgba(0,245,212,0.07);
+  }
+  .intent-bar.flash-red {
+    background: rgba(255,69,96,0.12);
+    border-color: var(--red);
+    box-shadow: 0 0 24px rgba(255,69,96,0.3), inset 0 0 40px rgba(255,69,96,0.07);
+  }
+  .intent-icon-col {
+    width: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    height: 100%;
+  }
+  .intent-icon {
+    font-size: 26px;
+    color: var(--grey-mid);
+    transition: color 0.25s, text-shadow 0.25s;
+  }
+  .intent-icon.active-cyan { color: var(--cyan); text-shadow: 0 0 20px var(--cyan); }
+  .intent-icon.active-red  { color: var(--red);  text-shadow: 0 0 20px var(--red); }
+  .intent-text-col { flex: 1; padding: 10px 12px; }
+  .intent-action {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--grey-mid);
+    letter-spacing: 3px;
+    transition: color 0.25s, text-shadow 0.25s;
+  }
+  .intent-action.active-cyan { color: var(--cyan); text-shadow: 0 0 16px var(--cyan-dim); }
+  .intent-action.active-red  { color: var(--red);  text-shadow: 0 0 16px rgba(255,69,96,0.5); }
+  .intent-sub {
+    display: flex;
+    gap: 16px;
+    margin-top: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+  }
+  .intent-conf { color: var(--grey-lt); }
+  .intent-desc { color: var(--grey-mid); }
+
+  /* Confidence gauge */
+  .conf-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  canvas#conf-canvas {
+    width: 100%;
+    flex: 1;
+    display: block;
+  }
+
+  /* Probability bars */
+  .prob-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .prob-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+  }
+  .prob-label { width: 38px; }
+  .prob-track {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-mid);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .prob-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    transition: width 0.12s ease;
+  }
+  .prob-pct { width: 28px; text-align: right; }
+
+  /* Gesture log */
+  .gesture-log-row {
+    padding: 3px 10px 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: var(--grey-mid);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+    flex-wrap: wrap;
+  }
+  .log-label { color: var(--grey-mid); letter-spacing: 2px; text-transform: uppercase; }
+  .log-entry { color: var(--grey-lt); padding: 1px 6px; background: var(--bg-card); border-radius: 2px; }
+  .log-entry.cyan { color: var(--cyan); }
+  .log-entry.red  { color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- BOOT OVERLAY -->
+<div id="boot-overlay">
+  <div class="boot-hex">⬡</div>
+  <div class="boot-title">SILENT SPEECH</div>
+  <div class="boot-sub">TinyML Assistive Interface · Neural Intent Recognition</div>
+  <div class="boot-bar-wrap"><div class="boot-bar-fill" id="boot-fill"></div></div>
+  <div class="boot-msg" id="boot-msg">Initialising system…</div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <span class="hdr-logo">⬡ SILENT SPEECH</span>
+    <div class="hdr-sep"></div>
+    <span class="hdr-sub">End-to-End TinyML Assistive Interface · sEMG Neural Intent Recognition Engine</span>
+    <span class="hdr-clock" id="clock">--:--:--</span>
+  </div>
+
+  <!-- TOP PANEL: SYSTEM STATUS -->
+  <div id="top-panel">
+    <div class="section-label"><div class="section-bar"></div>SYSTEM STATUS</div>
+    <div class="cards-row">
+
+      <!-- Card 1: Connection -->
+      <div class="card">
+        <div class="card-micro">Connection</div>
+        <div class="conn-row">
+          <div class="conn-dot" id="conn-dot">●</div>
+          <div class="conn-text" id="conn-text">INITIALISING</div>
+        </div>
+        <div class="card-sub">2-Channel sEMG · 1000 Hz</div>
+      </div>
+
+      <!-- Card 2: Model -->
+      <div class="card">
+        <div class="card-micro">ML Model</div>
+        <div class="card-val">Random Forest</div>
+        <div class="stat-line">Accuracy: <span id="stat-acc">–</span></div>
+        <div class="stat-line">Trees: <span>150</span> · Features: <span>10</span></div>
+      </div>
+
+      <!-- Card 3: Latency -->
+      <div class="card">
+        <div class="card-micro">Inference Latency</div>
+        <div class="card-big" id="lat-big">– ms</div>
+        <div class="stat-line">Avg: <span id="lat-avg">– ms</span></div>
+      </div>
+
+      <!-- Card 4: Session -->
+      <div class="card">
+        <div class="card-micro">Session Stats</div>
+        <div class="stat-line">Inferences: <span id="s-infer">0</span></div>
+        <div class="stat-line">REST: <span id="s-rest">0</span></div>
+        <div class="stat-line cyan">SELECT: <span id="s-sel">0</span></div>
+        <div class="stat-line red">NEXT PAGE: <span id="s-next">0</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CENTER PANEL: SIGNAL FEED -->
+  <div id="center-panel">
+    <div class="section-label">
+      <div class="section-bar"></div>
+      BIOMEDICAL SIGNAL FEED · 2-Channel sEMG · 1000 Hz
+    </div>
+    <div class="signal-area">
+      <div class="channel-wrap">
+        <div class="channel-label ch1-lbl">
+          CH 1 — Primary Electrode
+          <span class="ch-meta" id="ch1-meta">MAV: – · RMS: –</span>
+        </div>
+        <canvas class="sig-canvas" id="canvas-ch1"></canvas>
+      </div>
+      <div class="channel-divider"></div>
+      <div class="channel-wrap">
+        <div class="channel-label ch2-lbl">
+          CH 2 — Reference Electrode
+          <span class="ch-meta" id="ch2-meta">STATE: –</span>
+        </div>
+        <canvas class="sig-canvas" id="canvas-ch2"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM PANEL: INTENT ACCELERATOR -->
+  <div id="bottom-panel">
+    <div class="section-label">
+      <div class="section-bar"></div>
+      INTENT ACCELERATOR FEED · Confidence Gate: 85%
+    </div>
+    <div class="intent-content">
+
+      <!-- Intent notification bar -->
+      <div class="intent-bar" id="intent-bar">
+        <div class="intent-icon-col">
+          <div class="intent-icon" id="intent-icon">●</div>
+        </div>
+        <div class="intent-text-col">
+          <div class="intent-action" id="intent-action">[&nbsp;&nbsp;REST&nbsp;&nbsp;]</div>
+          <div class="intent-sub">
+            <span class="intent-conf" id="intent-conf">Confidence: –</span>
+            <span class="intent-desc" id="intent-desc">Waiting for gesture recognition…</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Confidence gauge -->
+      <div class="conf-card">
+        <div class="card-micro">Confidence</div>
+        <canvas id="conf-canvas" height="58"></canvas>
+      </div>
+
+      <!-- Class probabilities -->
+      <div class="prob-card">
+        <div class="card-micro">Class Probabilities</div>
+        <div class="prob-row">
+          <span class="prob-label" style="color:var(--grey-lt)">REST</span>
+          <div class="prob-track"><div class="prob-fill" id="pb-0" style="background:var(--grey-lt)"></div></div>
+          <span class="prob-pct" id="pp-0" style="color:var(--grey-lt)">0%</span>
+        </div>
+        <div class="prob-row">
+          <span class="prob-label" style="color:var(--cyan)">SEL</span>
+          <div class="prob-track"><div class="prob-fill" id="pb-1" style="background:var(--cyan)"></div></div>
+          <span class="prob-pct" id="pp-1" style="color:var(--cyan)">0%</span>
+        </div>
+        <div class="prob-row">
+          <span class="prob-label" style="color:var(--red)">NEXT</span>
+          <div class="prob-track"><div class="prob-fill" id="pb-2" style="background:var(--red)"></div></div>
+          <span class="prob-pct" id="pp-2" style="color:var(--red)">0%</span>
+        </div>
+      </div>
+
+    </div>
+    <!-- Gesture log -->
+    <div class="gesture-log-row" id="gesture-log">
+      <span class="log-label">›&nbsp;Log</span>
+      <span style="color:var(--grey-mid);font-size:8px">Awaiting first gesture…</span>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// SILENT SPEECH — Full JavaScript Engine
+// Synthetic sEMG · DSP Filtering · Random Forest (JS) · Live Inference
+// ═══════════════════════════════════════════════════════════════════════════
+"use strict";
+
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+const FS              = 1000;
+const BLOCK_SAMPLES   = 50;      // 50ms block
+const DISPLAY_SAMPLES = 500;     // rolling display window
+const WINDOW_SAMPLES  = 200;     // feature extraction window
+const CONF_THRESH     = 0.85;
+const INFERENCE_MS    = 50;
+const UPDATE_MS       = 50;
+
+// ── SEEDED PRNG (mulberry32) ────────────────────────────────────────────────
+function makePRNG(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s += 0x6D2B79F5;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Box-Muller normal samples
+function makeNormal(rng) {
+  let spare = null;
+  return (mu = 0, sigma = 1) => {
+    if (spare !== null) { const v = spare; spare = null; return mu + sigma * v; }
+    let u, v;
+    do { u = rng() * 2 - 1; v = rng() * 2 - 1; } while (u*u + v*v >= 1);
+    const m = Math.sqrt(-2 * Math.log(u*u + v*v) / (u*u + v*v));
+    spare = v * m;
+    return mu + sigma * u * m;
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 1. SYNTHETIC sEMG SIMULATOR
+// ══════════════════════════════════════════════════════════════════════════
+class SyntheticEMGSimulator {
+  constructor(seed = 42) {
+    this.rng    = makePRNG(seed);
+    this.normal = makeNormal(this.rng);
+  }
+
+  _noise(n, scale) {
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = this.normal(0, scale);
+    return out;
+  }
+
+  generateRest(n) {
+    return [this._noise(n, 5.0), this._noise(n, 4.5)];
+  }
+
+  generateJawClench(n) {
+    const t = n / FS;
+    const ch1 = new Float32Array(n), ch2 = new Float32Array(n);
+    const noise1 = this._noise(n, 8.0), noise2 = this._noise(n, 7.0);
+    for (let i = 0; i < n; i++) {
+      const ti = i / FS;
+      const env = 120.0 * (0.5 + 0.5 * Math.sin(Math.PI * ti / t));
+      const c1  = Math.sin(2*Math.PI*35*ti) + 0.6*Math.sin(2*Math.PI*55*ti) + 0.4*Math.sin(2*Math.PI*70*ti);
+      const c2  = Math.sin(2*Math.PI*30*ti) + 0.7*Math.sin(2*Math.PI*50*ti) + 0.3*Math.sin(2*Math.PI*65*ti);
+      ch1[i] = env * c1 + noise1[i];
+      ch2[i] = env * c2 * 0.85 + noise2[i];
+    }
+    return [ch1, ch2];
+  }
+
+  generateFingerFlick(n) {
+    const decay_k = 0.05 + 0.02 * this.rng();
+    const ch1 = new Float32Array(n), ch2 = new Float32Array(n);
+    const noise1 = this._noise(n, 5.0), noise2 = this._noise(n, 4.5);
+    for (let i = 0; i < n; i++) {
+      const ti  = i / FS;
+      const dec = 60.0 * Math.exp(-ti / decay_k);
+      const c1  = Math.sin(2*Math.PI*150*ti) + 0.5*Math.sin(2*Math.PI*230*ti) + 0.3*Math.sin(2*Math.PI*280*ti);
+      const c2  = Math.sin(2*Math.PI*140*ti) + 0.55*Math.sin(2*Math.PI*210*ti) + 0.25*Math.sin(2*Math.PI*270*ti);
+      ch1[i] = dec * c1 + noise1[i];
+      ch2[i] = dec * c2 * 0.9 + noise2[i];
+    }
+    return [ch1, ch2];
+  }
+
+  generateDataset(durationSec = 60) {
+    const total   = durationSec * FS;
+    const chunk   = Math.floor(total / 30);   // 10 chunks × 3 classes
+    const X       = [];
+    const y       = [];
+    const gens    = [this.generateRest.bind(this),
+                     this.generateJawClench.bind(this),
+                     this.generateFingerFlick.bind(this)];
+    for (let rep = 0; rep < 10; rep++) {
+      for (let cls = 0; cls < 3; cls++) {
+        const [c1, c2] = gens[cls](chunk);
+        for (let i = 0; i < chunk; i++) { X.push([c1[i], c2[i]]); y.push(cls); }
+      }
+    }
+    return { X, y };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 2. DSP PIPELINE (IIR Butterworth Bandpass + Notch — biquad sections)
+// ══════════════════════════════════════════════════════════════════════════
+class DSPPipeline {
+  constructor(fs = FS) {
+    this.fs = fs;
+    // Pre-computed 4th-order Butterworth Bandpass 20-450 Hz @ 1000 Hz
+    // (Two biquad sections, each: [b0,b1,b2,a1,a2])
+    this.bpSOS = [
+      [ 0.0674552,  0.0000000, -0.0674552, -1.5834470,  0.7439938],
+      [ 0.0674552,  0.0000000, -0.0674552, -1.1534190,  0.7439938],
+    ];
+    // 2nd-order IIR Notch 50 Hz Q=30 @ 1000 Hz
+    this.notchB = [ 0.9726263, -1.6180340,  0.9726263];
+    this.notchA = [        1.0, -1.6180340,  0.9452527];
+    // Filter states [2 channels × n_sections × 2 states]
+    this.bpZ  = [[[ 0,0],[0,0]], [[ 0,0],[0,0]]];  // [ch][section][z1,z2]
+    this.ntZ  = [[ 0, 0], [ 0, 0]];               // [ch][z1,z2]
+  }
+
+  processSample(x, ch) {
+    // Cascaded biquad bandpass
+    let y = x;
+    for (let s = 0; s < 2; s++) {
+      const [b0,b1,b2,a1,a2] = this.bpSOS[s];
+      const z = this.bpZ[ch][s];
+      const w = y - a1*z[0] - a2*z[1];
+      const out = b0*w + b1*z[0] + b2*z[1];
+      z[1] = z[0]; z[0] = w;
+      y = out;
+    }
+    // Notch filter
+    const [b0,b1,b2] = this.notchB;
+    const [,a1,a2]   = this.notchA;
+    const zn = this.ntZ[ch];
+    const w2 = y - a1*zn[0] - a2*zn[1];
+    const yn = b0*w2 + b1*zn[0] + b2*zn[1];
+    zn[1] = zn[0]; zn[0] = w2;
+    return yn;
+  }
+
+  processBlock(raw1, raw2) {
+    const f1 = new Float32Array(raw1.length);
+    const f2 = new Float32Array(raw2.length);
+    for (let i = 0; i < raw1.length; i++) {
+      f1[i] = this.processSample(raw1[i], 0);
+      f2[i] = this.processSample(raw2[i], 1);
+    }
+    return [f1, f2];
+  }
+
+  extractFeatures(w1, w2) {
+    const feats = [];
+    for (const w of [w1, w2]) {
+      const n = w.length;
+      if (n < 2) { feats.push(0,0,0,0,0); continue; }
+      let sumAbs = 0, sumSq = 0, zcr = 0, wl = 0;
+      for (let i = 0; i < n; i++) { sumAbs += Math.abs(w[i]); sumSq += w[i]*w[i]; }
+      for (let i = 1; i < n; i++) {
+        if (Math.sign(w[i]) !== Math.sign(w[i-1])) zcr++;
+        wl += Math.abs(w[i] - w[i-1]);
+      }
+      const mav  = sumAbs / n;
+      const rms  = Math.sqrt(sumSq / n);
+      const zcrN = zcr / n;
+      const mean = sumAbs / n;
+      let   varV = 0;
+      for (let i = 0; i < n; i++) varV += (w[i] - mean) * (w[i] - mean);
+      varV /= n;
+      feats.push(mav, rms, zcrN, wl, varV);
+    }
+    return feats;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 3. RANDOM FOREST CLASSIFIER (pure JavaScript, CART decision trees)
+// ══════════════════════════════════════════════════════════════════════════
+class DecisionTree {
+  constructor(maxDepth = 10, minSamples = 4, rng) {
+    this.maxDepth   = maxDepth;
+    this.minSamples = minSamples;
+    this.rng        = rng;
+    this.root       = null;
+  }
+
+  _gini(counts, total) {
+    if (total === 0) return 0;
+    let g = 1;
+    for (const c of counts) g -= (c/total) * (c/total);
+    return g;
+  }
+
+  _best_split(X, y, featureIdxs) {
+    const n = X.length;
+    const nF = featureIdxs.length;
+    let bestGain = -Infinity, bestFeat = 0, bestThresh = 0;
+    const parentCounts = [0,0,0];
+    for (const yi of y) parentCounts[yi]++;
+    const parentGini = this._gini(parentCounts, n);
+
+    for (let fi = 0; fi < nF; fi++) {
+      const f = featureIdxs[fi];
+      // Collect unique sorted values
+      const vals = X.map(row => row[f]);
+      vals.sort((a,b)=>a-b);
+      for (let t = 0; t < vals.length - 1; t++) {
+        const thresh = (vals[t] + vals[t+1]) / 2;
+        const lC = [0,0,0], rC = [0,0,0];
+        let lN = 0, rN = 0;
+        for (let i = 0; i < n; i++) {
+          if (X[i][f] <= thresh) { lC[y[i]]++; lN++; }
+          else                   { rC[y[i]]++; rN++; }
+        }
+        if (lN === 0 || rN === 0) continue;
+        const gain = parentGini
+          - (lN/n)*this._gini(lC,lN)
+          - (rN/n)*this._gini(rC,rN);
+        if (gain > bestGain) { bestGain = gain; bestFeat = f; bestThresh = thresh; }
+      }
+    }
+    return { feat: bestFeat, thresh: bestThresh, gain: bestGain };
+  }
+
+  _build(X, y, depth) {
+    const n = X.length;
+    const counts = [0,0,0];
+    for (const yi of y) counts[yi]++;
+    const majority = counts.indexOf(Math.max(...counts));
+
+    if (depth >= this.maxDepth || n < this.minSamples ||
+        counts.filter(c=>c>0).length === 1) {
+      return { leaf: true, cls: majority, counts };
+    }
+
+    // Random feature subset: sqrt(nFeats)
+    const nF = X[0].length;
+    const k  = Math.max(2, Math.round(Math.sqrt(nF)));
+    const idxs = [];
+    const pool = Array.from({length: nF}, (_,i)=>i);
+    for (let i = 0; i < k; i++) {
+      const j = Math.floor(this.rng() * pool.length);
+      idxs.push(pool.splice(j, 1)[0]);
+    }
+
+    const { feat, thresh, gain } = this._best_split(X, y, idxs);
+    if (gain <= 0) return { leaf: true, cls: majority, counts };
+
+    const lX=[], lY=[], rX=[], rY=[];
+    for (let i = 0; i < n; i++) {
+      if (X[i][feat] <= thresh) { lX.push(X[i]); lY.push(y[i]); }
+      else                      { rX.push(X[i]); rY.push(y[i]); }
+    }
+    if (!lX.length || !rX.length) return { leaf: true, cls: majority, counts };
+
+    return {
+      leaf: false,
+      feat, thresh,
+      left:  this._build(lX, lY, depth+1),
+      right: this._build(rX, rY, depth+1),
+      counts
+    };
+  }
+
+  fit(X, y) { this.root = this._build(X, y, 0); }
+
+  _predict_one(node, x) {
+    if (node.leaf) return node.counts;
+    return x[node.feat] <= node.thresh
+      ? this._predict_one(node.left,  x)
+      : this._predict_one(node.right, x);
+  }
+
+  predictProba(x) {
+    const counts = this._predict_one(this.root, x);
+    const total  = counts.reduce((a,b)=>a+b, 0);
+    return counts.map(c => c / (total||1));
+  }
+}
+
+class RandomForest {
+  constructor(nTrees = 40, maxDepth = 8, seed = 99) {
+    this.nTrees   = nTrees;
+    this.maxDepth = maxDepth;
+    this.seed     = seed;
+    this.trees    = [];
+    this.means    = null;
+    this.stds     = null;
+  }
+
+  _standardise(X) {
+    const n = X.length, nF = X[0].length;
+    if (!this.means) {
+      this.means = new Float64Array(nF);
+      this.stds  = new Float64Array(nF);
+      for (let f = 0; f < nF; f++) {
+        let s = 0;
+        for (let i = 0; i < n; i++) s += X[i][f];
+        this.means[f] = s / n;
+        let v = 0;
+        for (let i = 0; i < n; i++) v += (X[i][f]-this.means[f])**2;
+        this.stds[f]  = Math.sqrt(v/n) || 1;
+      }
+    }
+    return X.map(row => row.map((v,f) => (v - this.means[f]) / this.stds[f]));
+  }
+
+  _normRow(row) {
+    return row.map((v,f) => (v - this.means[f]) / this.stds[f]);
+  }
+
+  fit(X, y) {
+    const Xs = this._standardise(X);
+    const n  = Xs.length;
+    this.trees = [];
+    for (let t = 0; t < this.nTrees; t++) {
+      const rng  = makePRNG(this.seed + t * 1337);
+      const tree = new DecisionTree(this.maxDepth, 4, rng);
+      // Bootstrap sample
+      const bX=[], bY=[];
+      for (let i = 0; i < n; i++) {
+        const idx = Math.floor(rng() * n);
+        bX.push(Xs[idx]); bY.push(y[idx]);
+      }
+      tree.fit(bX, bY);
+      this.trees.push(tree);
+    }
+  }
+
+  predictProba(rawRow) {
+    const row   = this._normRow(rawRow);
+    const proba = [0, 0, 0];
+    for (const tree of this.trees) {
+      const p = tree.predictProba(row);
+      proba[0] += p[0]; proba[1] += p[1]; proba[2] += p[2];
+    }
+    const nT = this.trees.length;
+    return proba.map(p => p / nT);
+  }
+
+  predict(rawRow) {
+    const p = this.predictProba(rawRow);
+    return p.indexOf(Math.max(...p));
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 4. AUTO-TRAINING ENGINE
+// ══════════════════════════════════════════════════════════════════════════
+async function autoTrain(onProgress) {
+  const dsp   = new DSPPipeline();
+  const sim   = new SyntheticEMGSimulator(42);
+
+  onProgress("Generating 60-second synthetic sEMG dataset…", 8);
+  await sleep(30);
+  const { X: rawX, y } = sim.generateDataset(60);
+
+  onProgress("Applying DSP bandpass + 50 Hz notch filters…", 22);
+  await sleep(30);
+
+  // Filter
+  const filtered = rawX.map(row => {
+    const f1 = dsp.processSample(row[0], 0);
+    const f2 = dsp.processSample(row[1], 1);
+    return [f1, f2];
+  });
+
+  onProgress("Extracting biomedical features (MAV, RMS, ZCR, WL, VAR)…", 40);
+  await sleep(30);
+
+  // Sliding-window feature extraction
+  const featX = [], featY = [];
+  const stride = WINDOW_SAMPLES >> 1;  // 50% overlap
+  for (let i = WINDOW_SAMPLES; i < filtered.length; i += stride) {
+    const w1 = filtered.slice(i - WINDOW_SAMPLES, i).map(r=>r[0]);
+    const w2 = filtered.slice(i - WINDOW_SAMPLES, i).map(r=>r[1]);
+    featX.push(dsp.extractFeatures(w1, w2));
+    featY.push(y[i-1]);
+  }
+
+  onProgress(`Feature matrix: ${featX.length} × ${featX[0].length}  ·  Training…`, 58);
+  await sleep(30);
+
+  // Train/test split (80/20)
+  const shuffleIdx = featX.map((_,i)=>i).sort(()=>makePRNG(7)()-0.5);
+  const splitAt    = Math.floor(shuffleIdx.length * 0.8);
+  const trIdx      = shuffleIdx.slice(0, splitAt);
+  const teIdx      = shuffleIdx.slice(splitAt);
+  const trX = trIdx.map(i=>featX[i]), trY = trIdx.map(i=>featY[i]);
+  const teX = teIdx.map(i=>featX[i]), teY = teIdx.map(i=>featY[i]);
+
+  const rf = new RandomForest(40, 8, 42);
+
+  onProgress("Training Random Forest (40 trees, depth 8)…", 72);
+  await sleep(40);
+  rf.fit(trX, trY);
+
+  onProgress("Evaluating classifier on held-out test set…", 88);
+  await sleep(20);
+
+  let correct = 0;
+  for (let i = 0; i < teX.length; i++) {
+    if (rf.predict(teX[i]) === teY[i]) correct++;
+  }
+  const acc = (correct / teX.length * 100).toFixed(1);
+
+  onProgress(`Training complete · Accuracy: ${acc}%`, 100);
+  await sleep(200);
+
+  return { rf, dsp, acc };
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ══════════════════════════════════════════════════════════════════════════
+// 5. LIVE STREAM STATE MACHINE
+// ══════════════════════════════════════════════════════════════════════════
+const CYCLE = [
+  { state: 0, dur: 2000 },
+  { state: 1, dur: 1000 },
+  { state: 0, dur: 1500 },
+  { state: 2, dur:  500 },
+];
+const STATE_NAMES = {0: "STATE: REST", 1: "STATE: JAW CLENCH", 2: "STATE: FINGER FLICK"};
+const LABEL_MAP   = {0: "[&nbsp;&nbsp;REST&nbsp;&nbsp;]", 1: "[ SELECT ]", 2: "[NEXT PAGE]"};
+const LABEL_TEXT  = {0: "[  REST  ]", 1: "[ SELECT ]", 2: "[NEXT PAGE]"};
+const DESC_MAP    = {
+  0: "Idle state — no active gesture detected",
+  1: "Jaw Clench detected → Simulating SELECT macro",
+  2: "Finger Flick detected → Simulating NEXT PAGE macro"
+};
+const ICON_MAP = {0: "●", 1: "▶", 2: "⚡"};
+
+class LiveStream {
+  constructor(sim) {
+    this.sim       = sim;
+    this._cycleIdx = 0;
+    this._elapsed  = 0;
+    this.state     = 0;
+  }
+
+  nextBlock(n) {
+    const phase = CYCLE[this._cycleIdx];
+    this._elapsed += n / FS * 1000;
+    if (this._elapsed >= phase.dur) {
+      this._elapsed -= phase.dur;
+      this._cycleIdx = (this._cycleIdx + 1) % CYCLE.length;
+      this.state = CYCLE[this._cycleIdx].state;
+    }
+    if (this.state === 1) return this.sim.generateJawClench(n);
+    if (this.state === 2) return this.sim.generateFingerFlick(n);
+    return this.sim.generateRest(n);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 6. SIGNAL RENDERER
+// ══════════════════════════════════════════════════════════════════════════
+class SignalRenderer {
+  constructor(canvasId, color) {
+    this.canvas = document.getElementById(canvasId);
+    this.ctx    = this.canvas.getContext('2d');
+    this.color  = color;
+    this.buf    = new Float32Array(DISPLAY_SAMPLES);
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  resize() {
+    const r = window.devicePixelRatio || 1;
+    const w = this.canvas.clientWidth  || 800;
+    const h = this.canvas.clientHeight || 80;
+    this.canvas.width  = w * r;
+    this.canvas.height = h * r;
+    this.ctx.setTransform(r, 0, 0, r, 0, 0);
+    this.W = w; this.H = h;
+  }
+
+  push(samples) {
+    const n = samples.length;
+    this.buf.copyWithin(0, n);
+    this.buf.set(samples, DISPLAY_SAMPLES - n);
+  }
+
+  draw() {
+    const ctx = this.ctx;
+    const W = this.canvas.clientWidth  || 800;
+    const H = this.canvas.clientHeight || 80;
+    if (this.W !== W || this.H !== H) this.resize();
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0d0d11';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 0.5;
+    for (let g = 1; g < 4; g++) {
+      const y = H * g / 4;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    // Zero line
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 0.7;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Signal waveform
+    const peak = Math.max(10, ...this.buf.map(Math.abs));
+    const scale = (H * 0.42) / peak;
+    const step  = W / (DISPLAY_SAMPLES - 1);
+
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth   = 1.2;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    for (let i = 0; i < DISPLAY_SAMPLES; i++) {
+      const x = i * step;
+      const y = H/2 - this.buf[i] * scale;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 7. CONFIDENCE GAUGE RENDERER
+// ══════════════════════════════════════════════════════════════════════════
+function drawConfGauge(conf, active, cls) {
+  const cv  = document.getElementById('conf-canvas');
+  const ctx = cv.getContext('2d');
+  const r   = window.devicePixelRatio || 1;
+  const W   = cv.clientWidth  || 120;
+  const H   = cv.clientHeight || 58;
+  cv.width  = W * r;
+  cv.height = H * r;
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Track
+  const x0 = 10, x1 = W - 10, by = H * 0.48;
+  const th = 6;
+  ctx.fillStyle = '#232330';
+  roundRect(ctx, x0, by - th/2, x1-x0, th, 3);
+  ctx.fill();
+
+  // Fill
+  const fillW = (x1-x0) * conf;
+  const fillCol = cls===1 ? '#00f5d4' : cls===2 ? '#ff4560' : '#484860';
+  if (fillW > 0) {
+    ctx.fillStyle = active ? fillCol : '#00614f';
+    if (active) {
+      ctx.shadowColor = fillCol;
+      ctx.shadowBlur  = 10;
+    }
+    roundRect(ctx, x0, by - th/2, fillW, th, 3);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Threshold marker
+  const tx = x0 + (x1-x0) * CONF_THRESH;
+  ctx.strokeStyle = '#ffb020';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath(); ctx.moveTo(tx, by-12); ctx.lineTo(tx, by+12); ctx.stroke();
+  ctx.fillStyle   = '#ffb020';
+  ctx.font        = '7px Share Tech Mono';
+  ctx.textAlign   = 'center';
+  ctx.fillText('85%', tx, by - 16);
+
+  // Percentage
+  ctx.fillStyle = active ? '#f0f0f8' : '#9090aa';
+  ctx.font      = 'bold 14px Orbitron, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${(conf*100).toFixed(1)}%`, W/2, by + 24);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 8. MAIN APPLICATION CONTROLLER
+// ══════════════════════════════════════════════════════════════════════════
+class App {
+  constructor() {
+    this.rf              = null;
+    this.dsp             = null;
+    this.stream          = null;
+    this.renderer1       = null;
+    this.renderer2       = null;
+    this.buf1            = new Float32Array(WINDOW_SAMPLES);
+    this.buf2            = new Float32Array(WINDOW_SAMPLES);
+    this.inferCount      = 0;
+    this.gestureCounts   = {0:0, 1:0, 2:0};
+    this.latHistory      = [];
+    this.lastProba       = [1,0,0];
+    this.lastCls         = 0;
+    this.lastConf        = 0;
+    this.gestureLog      = [];
+    this.flashJob        = null;
+    this._running        = false;
+  }
+
+  async boot() {
+    const fill = document.getElementById('boot-fill');
+    const msg  = document.getElementById('boot-msg');
+    const setP = (txt, pct) => { msg.textContent = txt; fill.style.width = pct + '%'; };
+
+    const { rf, dsp, acc } = await autoTrain(setP);
+    this.rf  = rf;
+    this.dsp = dsp;
+
+    setP('Initialising live stream…', 100);
+    await sleep(200);
+
+    this.stream    = new LiveStream(new SyntheticEMGSimulator(Date.now() & 0xffff));
+    this.renderer1 = new SignalRenderer('canvas-ch1', '#00f5d4');
+    this.renderer2 = new SignalRenderer('canvas-ch2', '#ffb020');
+
+    // Update status cards
+    document.getElementById('conn-dot').classList.add('online');
+    document.getElementById('conn-text').textContent = 'ONLINE';
+    document.getElementById('stat-acc').textContent  = acc + '%';
+
+    // Dismiss boot overlay
+    const overlay = document.getElementById('boot-overlay');
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.remove(), 700);
+
+    // Start clock
+    this._tickClock();
+
+    this._running = true;
+    this._loop();
+  }
+
+  _tickClock() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    document.getElementById('clock').textContent =
+      `${pad(now.getHours())} : ${pad(now.getMinutes())} : ${pad(now.getSeconds())}`;
+    setTimeout(() => this._tickClock(), 1000);
+  }
+
+  _loop() {
+    if (!this._running) return;
+
+    // 1. Generate block
+    const [raw1, raw2] = this.stream.nextBlock(BLOCK_SAMPLES);
+    const state        = this.stream.state;
+
+    // 2. DSP
+    const [f1, f2] = this.dsp.processBlock(raw1, raw2);
+
+    // 3. Push to display buffers
+    this.renderer1.push(f1);
+    this.renderer2.push(f2);
+
+    // 4. Rolling feature window
+    this.buf1.copyWithin(0, BLOCK_SAMPLES);
+    this.buf2.copyWithin(0, BLOCK_SAMPLES);
+    this.buf1.set(f1, WINDOW_SAMPLES - BLOCK_SAMPLES);
+    this.buf2.set(f2, WINDOW_SAMPLES - BLOCK_SAMPLES);
+
+    // 5. Inference
+    const t0    = performance.now();
+    const feats = this.dsp.extractFeatures(Array.from(this.buf1), Array.from(this.buf2));
+    const proba = this.rf.predictProba(feats);
+    const cls   = proba.indexOf(Math.max(...proba));
+    const conf  = proba[cls];
+    const lat   = performance.now() - t0;
+
+    this.inferCount++;
+    this.gestureCounts[cls]++;
+    this.lastProba = proba;
+    this.lastCls   = cls;
+    this.lastConf  = conf;
+    this.latHistory.push(lat);
+    if (this.latHistory.length > 40) this.latHistory.shift();
+
+    if (conf >= CONF_THRESH) {
+      const ts = new Date().toLocaleTimeString('en-GB',{hour12:false});
+      this.gestureLog.unshift({ ts, cls, conf });
+      if (this.gestureLog.length > 8) this.gestureLog.pop();
+    }
+
+    // 6. Render
+    this.renderer1.draw();
+    this.renderer2.draw();
+    this._updateUI(state, proba, cls, conf, lat);
+
+    setTimeout(() => this._loop(), UPDATE_MS);
+  }
+
+  _updateUI(state, proba, cls, conf, lat) {
+    // ── Top panel ─────────────────────────────────────────────────────────
+    document.getElementById('lat-big').textContent = lat.toFixed(2) + ' ms';
+    const avg = this.latHistory.reduce((a,b)=>a+b,0) / this.latHistory.length;
+    document.getElementById('lat-avg').textContent = avg.toFixed(2) + ' ms';
+    document.getElementById('s-infer').textContent = this.inferCount.toLocaleString();
+    document.getElementById('s-rest').textContent  = this.gestureCounts[0].toLocaleString();
+    document.getElementById('s-sel').textContent   = this.gestureCounts[1].toLocaleString();
+    document.getElementById('s-next').textContent  = this.gestureCounts[2].toLocaleString();
+
+    // ── Signal meta ───────────────────────────────────────────────────────
+    const w1a = Array.from(this.buf1);
+    const mav = w1a.reduce((a,v)=>a+Math.abs(v),0) / w1a.length;
+    const rms = Math.sqrt(w1a.reduce((a,v)=>a+v*v,0) / w1a.length);
+    document.getElementById('ch1-meta').textContent =
+      `MAV: ${mav.toFixed(1)} µV  ·  RMS: ${rms.toFixed(1)} µV`;
+    document.getElementById('ch2-meta').textContent = STATE_NAMES[state];
+
+    // ── Probability bars ──────────────────────────────────────────────────
+    for (let c = 0; c < 3; c++) {
+      const pct = (proba[c] * 100).toFixed(0) + '%';
+      document.getElementById(`pb-${c}`).style.width = pct;
+      document.getElementById(`pp-${c}`).textContent  = pct;
+    }
+
+    // ── Confidence gauge ──────────────────────────────────────────────────
+    const active = conf >= CONF_THRESH;
+    drawConfGauge(conf, active, cls);
+
+    // ── Intent bar ────────────────────────────────────────────────────────
+    const bar   = document.getElementById('intent-bar');
+    const icon  = document.getElementById('intent-icon');
+    const act   = document.getElementById('intent-action');
+    const confEl= document.getElementById('intent-conf');
+    const descEl= document.getElementById('intent-desc');
+
+    // Reset classes
+    bar.className  = 'intent-bar';
+    icon.className = 'intent-icon';
+    act.className  = 'intent-action';
+
+    if (active) {
+      if (cls === 1) {
+        bar.classList.add('flash-cyan');
+        icon.classList.add('active-cyan');
+        act.classList.add('active-cyan');
+      } else if (cls === 2) {
+        bar.classList.add('flash-red');
+        icon.classList.add('active-red');
+        act.classList.add('active-red');
+      }
+    }
+
+    icon.textContent   = ICON_MAP[cls];
+    act.innerHTML      = LABEL_MAP[cls];
+    confEl.textContent = `Confidence: ${(conf*100).toFixed(1)}%`;
+    descEl.textContent = active ? DESC_MAP[cls] : "Waiting for gesture recognition…";
+
+    // ── Gesture log ───────────────────────────────────────────────────────
+    const logEl = document.getElementById('gesture-log');
+    if (this.gestureLog.length === 0) return;
+    let html = '<span class="log-label">› Log</span>';
+    for (const { ts, cls: gc, conf: gc2 } of this.gestureLog.slice(0,6)) {
+      const col = gc===1 ? 'cyan' : gc===2 ? 'red' : '';
+      html += `<span class="log-entry ${col}">${ts} ${LABEL_TEXT[gc]} ${(gc2*100).toFixed(0)}%</span>`;
+    }
+    logEl.innerHTML = html;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  const app = new App();
+  app.boot().catch(console.error);
+});
+</script>
+</body>
+</html>
