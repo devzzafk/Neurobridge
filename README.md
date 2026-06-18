@@ -1,4 +1,4 @@
-# 🧠 NeuroBridge
+#NeuroBridge
 
 A simulated Brain–Computer Interface (BCI) platform for assistive communication.
 
@@ -22,4 +22,4 @@ Deploy easily using Vercel:
 3. Click Deploy
 
 ## ⚠️ Disclaimer
-This is a simulation for educational purposes only.
+This is a simulation for educational purposes only !
